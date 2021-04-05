@@ -42,6 +42,7 @@ def make_sound_name(url, name=None) -> Tuple[str, str]:
 
 
 def download_remote_file(url, save_as):
+    LOG.info("Downloading '%s' to '%s'", url, save_as)
     response = requests.get(url)
     if response.status_code == 200:
         with open(save_as, "wb") as fp:
@@ -69,7 +70,7 @@ class SoundServer:
         self.app.route('/files/add-from-url', 'POST', self.add_from_url)
 
         self.all_file_names = set()
-        self.all_files = list()
+        self.all_files = []
         self.last_map_time = None
 
     def build_file_maps(self):
@@ -97,7 +98,7 @@ class SoundServer:
                     self.all_files.append({
                         'name': name,
                         'full_name': full_name,
-                        'url': entry['url'],
+                        'remote_url': entry['url'],
                     })
                     self.all_file_names.add(full_name)
         LOG.debug("Added %d sounds to map", len(self.all_files))
@@ -116,7 +117,7 @@ class SoundServer:
         This fn also overrides any 'remote' urls with local ones that are
         handled by get_file.
         """
-        fmap = {'files': list(self.all_files)}
+        fmap = {'files': self.all_files[:]}
         for i in range(len(fmap['files'])):
             fmap['files'][i]['url'] = utils.replace_url_path(
                 str(bottle.request.url),
@@ -147,14 +148,18 @@ class SoundServer:
         except FileNotFoundError:
             raise bottle.HTTPError(404, "File not found") from None
 
-        if 'url' in data:
+        if 'remote_url' in data:
             # This is a remote file, so download & save it now
+            LOG.info("'%s' is a non-local file, getting it from remote",
+                     filename)
             download_remote_file(
-                data['url'], os.path.join(self.file_store, data['full_name']))
+                data['remote_url'],
+                os.path.join(self.file_store, data['full_name']))
             # Rebuild the filemap
             self.build_file_maps()
 
         # Return the file that is guaranteed to exist in the file store
+        LOG.info("Serving local file '%s'", filename)
         return bottle.static_file(filename, root=self.file_store)
 
     def upload_file(self):
