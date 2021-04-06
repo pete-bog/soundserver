@@ -1,3 +1,4 @@
 bottle
 tornado
 requests
+fuzzywuzzy[speedup]

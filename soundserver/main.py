@@ -1,12 +1,14 @@
 import functools
+import json
+import logging
 import os
 import os.path
-import json
 import re
-import logging
 from datetime import datetime, timedelta
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
+
 import bottle
+import fuzzywuzzy.process
 import requests
 
 from . import cli, utils
@@ -52,6 +54,15 @@ def download_remote_file(url, save_as):
             500, f"There was an error getting the url {url}: {response.text}")
 
 
+def find_closest_matches(search_term,
+                         choices,
+                         limit=5) -> List[Tuple[str, int]]:
+    LOG.info("Searching for %d similar matches to '%s'", limit, search_term)
+    matches = fuzzywuzzy.process.extract(search_term, choices, limit=limit)
+    LOG.info("Found matches: %s", matches)
+    return matches
+
+
 class SoundServer:
     MAP_INTERVAL = timedelta(minutes=5)
 
@@ -66,6 +77,7 @@ class SoundServer:
         self.app.route('/files', 'GET', self.get_file_list)
         # Stored non-application files
         self.app.route('/files/<filename:path>', 'GET', self.get_file)
+        self.app.route('/search', 'GET', self.search)
         self.app.route('/files/upload', 'POST', self.upload_file)
         self.app.route('/files/add-from-url', 'POST', self.add_from_url)
 
@@ -124,16 +136,49 @@ class SoundServer:
                 '/files/{}'.format(fmap['files'][i]['full_name']))
         return fmap
 
-    def get_file_list(self):
-        # Return the cached map, if we built it recently
-        if self.last_map_time and \
-                datetime.utcnow() - self.last_map_time < self.MAP_INTERVAL:
-            return self.enriched_file_map
+    def search(self, search_term, limit=5) -> Dict:
+        matches = find_closest_matches(search_term,
+                                       self.all_file_names,
+                                       limit=limit)
+        results = {'files': []}
+        for x in self.all_files:
+            if x['full_name'] in (m[0] for m in matches):
+                results['files'].append(x)
+        return results
 
-        # Otherwise build the map now
-        self.build_file_maps()
-        # Return the enriched copy
-        return self.enriched_file_map
+    def lucky(self, search_term):
+        matches = find_closest_matches(search_term,
+                                       self.all_file_names,
+                                       limit=1)
+        if matches:
+            for x in self.all_files:
+                if x['full_name'] == matches[0][0]:
+                    LOG.info("Redirecting client to file '%s'", x['full_name'])
+                    raise bottle.HTTPError(303,
+                                           location="/files/{}".format(
+                                               x['full_name']))
+        raise bottle.HTTPError(404, "u r unlucki")
+
+    def get_file_list(self):
+        # Build a fresh map, if we haven't built it recently
+        if self.last_map_time and \
+                datetime.utcnow() - self.last_map_time >= self.MAP_INTERVAL:
+            self.build_file_maps()
+
+        # Is this a search or a lucky query?
+        if bottle.request.query.search:
+            # Searching for results
+            limit = bottle.request.query.limit
+            if limit:
+                return self.search(bottle.request.query.search,
+                                   limit=int(limit))
+            return self.search(bottle.request.query.search)
+        elif bottle.request.query.lucky:
+            # Someone's feeling lucky
+            self.lucky(bottle.request.query.lucky)
+        else:
+            # Return the enriched copy
+            return self.enriched_file_map
 
     def get_data_for_filename(self, filename):
         if filename in self.all_file_names:
