@@ -18,6 +18,7 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 THIRD_PARTY_DIR = os.path.join(os.path.dirname(__file__), "thirdparty")
 PERMITTED_TYPES = ('.wav', '.mp3')
 PERMITTED_URL_CHARS = re.compile(r'[A-Za-z0-9\-_~]')
+DEFAULT_SEARCH_LIMIT = 5
 
 
 def check_file_extension(filename: str) -> str:
@@ -76,8 +77,9 @@ class SoundServer:
                        functools.partial(bottle.static_file, root=STATIC_DIR))
         self.app.route('/files', 'GET', self.get_file_list)
         # Stored non-application files
-        self.app.route('/files/<filename:path>', 'GET', self.get_file)
-        self.app.route('/search', 'GET', self.search)
+        self.app.route('/files/get/<filename:path>', 'GET', self.get_file)
+        self.app.route('/files/search', 'GET', self.search)
+        self.app.route('/files/lucky', 'GET', self.lucky)
         self.app.route('/files/upload', 'POST', self.upload_file)
         self.app.route('/files/add-from-url', 'POST', self.add_from_url)
 
@@ -133,10 +135,16 @@ class SoundServer:
         for i in range(len(fmap['files'])):
             fmap['files'][i]['url'] = utils.replace_url_path(
                 str(bottle.request.url),
-                '/files/{}'.format(fmap['files'][i]['full_name']))
+                '/files/get/{}'.format(fmap['files'][i]['full_name']))
         return fmap
 
-    def search(self, search_term, limit=5) -> Dict:
+    def search(self) -> Dict:
+        search_term = bottle.request.query.search
+        if bottle.request.query.limit:
+            limit = int(bottle.request.query.limit)
+        else:
+            limit = DEFAULT_SEARCH_LIMIT
+
         matches = find_closest_matches(search_term,
                                        self.all_file_names,
                                        limit=limit)
@@ -146,7 +154,8 @@ class SoundServer:
                 results['files'].append(x)
         return results
 
-    def lucky(self, search_term):
+    def lucky(self):
+        search_term = bottle.request.query.search
         matches = find_closest_matches(search_term,
                                        self.all_file_names,
                                        limit=1)
@@ -165,20 +174,8 @@ class SoundServer:
                 datetime.utcnow() - self.last_map_time >= self.MAP_INTERVAL:
             self.build_file_maps()
 
-        # Is this a search or a lucky query?
-        if bottle.request.query.search:
-            # Searching for results
-            limit = bottle.request.query.limit
-            if limit:
-                return self.search(bottle.request.query.search,
-                                   limit=int(limit))
-            return self.search(bottle.request.query.search)
-        elif bottle.request.query.lucky:
-            # Someone's feeling lucky
-            self.lucky(bottle.request.query.lucky)
-        else:
-            # Return the enriched copy
-            return self.enriched_file_map
+        # Return the enriched copy
+        return self.enriched_file_map
 
     def get_data_for_filename(self, filename):
         if filename in self.all_file_names:
