@@ -24,7 +24,7 @@ setup(
     name=PACKAGE,
     version=about['__version__'],
     packages=find_packages(include=[PACKAGE, PACKAGE + '.*']),
-    python_requires='>3.5',
+    python_requires='>=3.8',
     install_requires=get_requires('requirements.txt'),
     extras_require=extras,
 )
