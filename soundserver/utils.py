@@ -6,6 +6,8 @@ import re
 import logging
 import urllib
 
+import httpx
+
 LOG = logging.getLogger(__name__)
 
 PERMITTED_URL_CHARS = re.compile(r'[A-Za-z0-9\-_~\.]')

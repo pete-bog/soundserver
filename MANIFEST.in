@@ -1,2 +1,3 @@
+include requirements*.txt
 recursive-include soundserver/static/ *.html *.js *.css *.png
 recursive-include soundserver/thirdparty/ *.json

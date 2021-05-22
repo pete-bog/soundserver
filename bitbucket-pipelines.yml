@@ -1,0 +1,9 @@
+image: fkrull/multi-python
+
+pipelines:
+  default:
+    - step:
+        caches:
+          - pip
+        script:
+          - tox

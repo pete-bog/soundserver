@@ -1,4 +1,3 @@
-bottle
-tornado
-requests
+sanic
+httpx
 fuzzywuzzy[speedup]
