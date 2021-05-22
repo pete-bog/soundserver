@@ -46,6 +46,26 @@ async def test_download_remote_file_error(get_mock):
     get_mock.assert_awaited_once_with('url')
 
 
+@mock.patch('soundserver.main.find_closest_matches')
+def test_find_lucky_match_no_matches(find_closest_matches_mock):
+    find_closest_matches_mock.return_value = []
+    assert main.find_lucky_match("asd", []) == None
+
+
+@mock.patch('soundserver.main.find_closest_matches')
+def test_find_lucky_match_one_option(find_closest_matches_mock):
+    find_closest_matches_mock.return_value = [("a", 90), ("b", 80), ("c", 60)]
+    match = main.find_lucky_match("asd", [])
+    assert match == "a"
+
+
+@mock.patch('soundserver.main.find_closest_matches')
+def test_find_lucky_match_multi_option(find_closest_matches_mock):
+    find_closest_matches_mock.return_value = [("a", 90), ("b", 90), ("c", 60)]
+    match = main.find_lucky_match("asd", [])
+    assert match in ("a", "b")
+
+
 class TestSoundServer:
     FILE_STORE = '/path/to/store'
 
@@ -53,26 +73,12 @@ class TestSoundServer:
     def soundserver(self) -> main.SoundServer:
         return main.SoundServer(self.FILE_STORE)
 
-    def make_request(self):
-        with mock.patch("sanic.Request.receive_body") as receive_body_mock:
-            request = sanic.Request(
-                b'/test',
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                method="POST",
-                transport=mock.Mock(),
-                app=mock.Mock(),
-                version="1.1")
-            body = "url=value1&field2=value2"
-            receive_body_mock.return_value = body
-        return request
-
     @pytest.mark.asyncio
     @mock.patch('soundserver.main.download_remote_file')
     @mock.patch('soundserver.main.check_file_extension')
     async def test_add_from_url(self, check_mock, download_mock, soundserver):
         # Arrange
         check_mock.return_value = '.wav'
-        # request = self.make_request()
         request = mock.MagicMock(spec=sanic.Request)
         request.form = {"url": "url_val", "name": "name_val"}
         # Act

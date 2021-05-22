@@ -3,7 +3,8 @@ import os
 import os.path
 import re
 from datetime import datetime, timedelta
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
+from random import randint
 
 import aiofiles
 import sanic
@@ -62,6 +63,22 @@ def find_closest_matches(search_term,
     matches = fuzzywuzzy.process.extract(search_term, choices, limit=limit)
     logger.info("Found matches: %s", matches)
     return matches
+
+
+def find_lucky_match(search_term, choices) -> Union[str, None]:
+    """Search for a term, if there multiple matches of the same confidence,
+    then return a random choice from that list.
+    Return None if there are no good matches.
+    """
+    matches = find_closest_matches(search_term, choices, limit=15)
+    if matches:
+        top_match_confidence = matches[0][1]
+        top_matches = [x[0] for x in matches if x[1] == top_match_confidence]
+        random_index = randint(0, len(top_matches) - 1)
+        random_choice = top_matches[random_index]
+        logger.info("Selecting random lucky choice of '%s'", random_choice)
+        return random_choice
+    return None
 
 
 async def redirect_home(_):
@@ -165,12 +182,11 @@ class SoundServer:
 
     async def lucky(self, request: sanic.Request) -> sanic.HTTPResponse:
         search_term = request.args.get("search")
-        matches = find_closest_matches(search_term,
-                                       self.all_file_names,
-                                       limit=1)
-        if matches:
+        match_full_name = find_lucky_match(search_term, self.all_file_names)
+
+        if match_full_name:
             for x in self.all_files:
-                if x['full_name'] == matches[0][0]:
+                if x['full_name'] == match_full_name:
                     logger.info("Redirecting client to file '%s'",
                                 x['full_name'])
                     return sanic.response.redirect("/files/get/{}".format(
